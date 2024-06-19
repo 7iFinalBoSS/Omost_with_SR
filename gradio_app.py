@@ -128,11 +128,11 @@ def cv2_to_PIL(numpy_array):
         raise ValueError("Unsupported image format")
     return pil_array 
 
-def img_sr_api(numpy_array, upsampler):
+def img_sr_api(numpy_array, upsampler, highres_scale):
     img = PIL_to_cv2(numpy_array)
     try:
         # outscale is upsampling scale of the image
-        output, _ = upsampler.enhance(img, outscale=2)
+        output, _ = upsampler.enhance(img, outscale=highres_scale)
     except RuntimeError as error:
         print('Error', error)
         print('If you encounter CUDA out of memory, try to set --tile with a smaller number.')
@@ -290,7 +290,7 @@ def diffusion_fn(chatbot, canvas_outputs, num_samples, seed, image_width, image_
 
     if highres_scale > 1.0 + eps:
         # super resolution, the process is: txt2img -> sr(x2) -> img2img
-        pixels = [img_sr_api(p,upsampler) for p in pixels]
+        pixels = [img_sr_api(p,upsampler,highres_scale) for p in pixels]
         pixels = [
             resize_without_crop(
                 image=p,
