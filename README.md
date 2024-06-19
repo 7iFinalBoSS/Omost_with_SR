@@ -5,7 +5,7 @@ Omost_with_SR is a project forked by [Omost](https://github.com/lllyasviel/Omost
 + If `highres_scale > 1`, the model will adopt the super resolution function, the entire process is: 
 **text inputs -> llm -> Canvus outputs -> txt2img -> sr -> img2img -> image outputs**
 
-+ If `highres_scale = 1`, the model will adopt the super resolution function, the entire process is equal to the origin Omost：
++ If `highres_scale = 1`, the model disable super resolution, the entire process is equal to the origin Omost：
 **text inputs -> llm -> Canvus outputs -> txt2img -> image outputs**
 
 In particular, we provide a simple inference code `Omost_generate.py` and OmostAutoPipeline class in `Omost_api.py` to quickly use and debug.
@@ -13,7 +13,7 @@ In particular, we provide a simple inference code `Omost_generate.py` and OmostA
 # Get Started
 you can use the below deployment (requires 8GB Nvidia VRAM):
 
-    git clone https://github.com/lllyasviel/Omost.git
+    git clone https://github.com/SongwuJob/Omost_with_SR.git
     cd Omost_with_SR
     conda create -n omost python=3.10
     conda activate omost
