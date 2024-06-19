@@ -171,7 +171,7 @@ class OmostAutoPipeline():
         img = self.PIL_to_cv2(numpy_array)
         try:
             # outscale is upsampling scale of the image
-            output, _ = self.upsampler.enhance(img, outscale=2)
+            output, _ = self.upsampler.enhance(img, outscale=self.highres_scale)
         except RuntimeError as error:
             print('Error', error)
             print('If you encounter CUDA out of memory, try to set --tile with a smaller number.')
