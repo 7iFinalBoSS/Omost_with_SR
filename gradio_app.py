@@ -1,11 +1,10 @@
 import os
-
+import cv2
 os.environ['HF_HOME'] = os.path.join(os.path.dirname(__file__), 'hf_download')
 HF_TOKEN = None
 
 import lib_omost.memory_management as memory_management
 import uuid
-
 import torch
 import numpy as np
 import gradio as gr
@@ -13,12 +12,10 @@ import tempfile
 
 gradio_temp_dir = os.path.join(tempfile.gettempdir(), 'gradio')
 os.makedirs(gradio_temp_dir, exist_ok=True)
-
 from threading import Thread
 
 # Phi3 Hijack
 from transformers.models.phi3.modeling_phi3 import Phi3PreTrainedModel
-
 Phi3PreTrainedModel._supports_sdpa = True
 
 from PIL import Image
@@ -31,12 +28,15 @@ from chat_interface import ChatInterface
 from transformers.generation.stopping_criteria import StoppingCriteriaList
 
 import lib_omost.canvas as omost_canvas
+# super resolution module
+from extension.Real_ESRGAN.realesrgan import RealESRGANer
+from basicsr.archs.rrdbnet_arch import RRDBNet
 
 
-# SDXL
-
-sdxl_name = 'SG161222/RealVisXL_V4.0'
+################################################# SDXL #################################################
+# sdxl_name = 'SG161222/RealVisXL_V4.0'
 # sdxl_name = 'stabilityai/stable-diffusion-xl-base-1.0'
+sdxl_name = '/path/to/RealVisXL_V4.0'
 
 tokenizer = CLIPTokenizer.from_pretrained(
     sdxl_name, subfolder="tokenizer")
@@ -66,11 +66,11 @@ pipeline = StableDiffusionXLOmostPipeline(
 
 memory_management.unload_all_models([text_encoder, text_encoder_2, vae, unet])
 
-# LLM
-
+################################################# LLM #################################################
 # llm_name = 'lllyasviel/omost-phi-3-mini-128k-8bits'
-llm_name = 'lllyasviel/omost-llama-3-8b-4bits'
+# llm_name = 'lllyasviel/omost-llama-3-8b-4bits'
 # llm_name = 'lllyasviel/omost-dolphin-2.9-llama3-8b-4bits'
+llm_name = '/path/to/omost-llama-3-8b-4bits'
 
 llm_model = AutoModelForCausalLM.from_pretrained(
     llm_name,
@@ -86,6 +86,58 @@ llm_tokenizer = AutoTokenizer.from_pretrained(
 
 memory_management.unload_all_models(llm_model)
 
+################################################# SR #################################################
+# RealESRGAN, from https://github.com/xinntao/Real-ESRGAN
+sr_model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
+# for RealESRGAN_x4plus_anime_6B, please download the corresponding model
+# sr_model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=6, num_grow_ch=32, scale=4)
+sr_netscale = 4
+sr_model_path = '/path/to/RealESRGAN_x4plus.pth'
+
+upsampler = RealESRGANer(
+        scale=sr_netscale,
+        model_path=sr_model_path,
+        dni_weight=None,
+        model=sr_model,
+        tile=0, # fault
+        tile_pad=10, # fault
+        pre_pad=0, # fault
+        half=False, # fault, set True for fp16
+        gpu_id=None)
+
+
+def PIL_to_cv2(numpy_array):
+    if numpy_array.ndim == 2:  # grey image
+        cv2_array = numpy_array
+    elif numpy_array.shape[2] == 3:  # RGB image
+        cv2_array = cv2.cvtColor(numpy_array, cv2.COLOR_RGB2BGR)
+    elif numpy_array.shape[2] == 4:  # RGBA image
+        cv2_array = cv2.cvtColor(numpy_array, cv2.COLOR_RGBA2BGRA)
+    else:
+        raise ValueError("Unsupported image format")
+    return cv2_array
+
+def cv2_to_PIL(numpy_array):
+    if numpy_array.ndim == 2: # grey image
+        pil_array = numpy_array
+    elif numpy_array.shape[2] == 3:  # BGR image
+        pil_array = cv2.cvtColor(numpy_array, cv2.COLOR_BGR2RGB)
+    elif numpy_array.shape[2] == 4:  # BGRA image
+        pil_array = cv2.cvtColor(numpy_array, cv2.COLOR_BGRA2RGBA)
+    else:
+        raise ValueError("Unsupported image format")
+    return pil_array 
+
+def img_sr_api(numpy_array, upsampler):
+    img = PIL_to_cv2(numpy_array)
+    try:
+        # outscale is upsampling scale of the image
+        output, _ = upsampler.enhance(img, outscale=2)
+    except RuntimeError as error:
+        print('Error', error)
+        print('If you encounter CUDA out of memory, try to set --tile with a smaller number.')
+        return numpy_array # return origin input if error
+    return cv2_to_PIL(output)
 
 @torch.inference_mode()
 def pytorch2numpy(imgs):
@@ -237,6 +289,8 @@ def diffusion_fn(chatbot, canvas_outputs, num_samples, seed, image_width, image_
     pixels = pytorch2numpy(pixels)
 
     if highres_scale > 1.0 + eps:
+        # super resolution, the process is: txt2img -> sr(x2) -> img2img
+        pixels = [img_sr_api(p,upsampler) for p in pixels]
         pixels = [
             resize_without_crop(
                 image=p,
@@ -336,9 +390,9 @@ with gr.Blocks(
 
             with gr.Accordion(open=False, label='Advanced'):
                 cfg = gr.Slider(label="CFG Scale", minimum=1.0, maximum=32.0, value=5.0, step=0.01)
-                highres_scale = gr.Slider(label="HR-fix Scale (\"1\" is disabled)", minimum=1.0, maximum=2.0, value=1.0, step=0.01)
+                highres_scale = gr.Slider(label="HR-fix Scale (\"1\" is disabled)", minimum=1.0, maximum=2.0, value=2.0, step=0.01)
                 highres_steps = gr.Slider(label="Highres Fix Steps", minimum=1, maximum=100, value=20, step=1)
-                highres_denoise = gr.Slider(label="Highres Fix Denoise", minimum=0.1, maximum=1.0, value=0.4, step=0.01)
+                highres_denoise = gr.Slider(label="Highres Fix Denoise", minimum=0.1, maximum=1.0, value=0.5, step=0.01)
                 n_prompt = gr.Textbox(label="Negative Prompt", value='lowres, bad anatomy, bad hands, cropped, worst quality')
 
             render_button = gr.Button("Render the Image!", size='lg', variant="primary", visible=False)
@@ -379,4 +433,4 @@ with gr.Blocks(
         ], outputs=[chatInterface.chatbot_state])
 
 if __name__ == "__main__":
-    demo.queue().launch(inbrowser=True, server_name='0.0.0.0')
+    demo.queue().launch(inbrowser=True, server_name='0.0.0.0',server_port=8080)
