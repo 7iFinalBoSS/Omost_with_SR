@@ -54,7 +54,7 @@ def img_sr_api(numpy_array, upsampler):
     img = PIL_to_cv2(numpy_array)
     try:
         # outscale is upsampling scale of the image
-        output, _ = upsampler.enhance(img, outscale=2)
+        output, _ = upsampler.enhance(img, outscale=args.highres_scale)
     except RuntimeError as error:
         print('Error', error)
         print('If you encounter CUDA out of memory, try to set --tile with a smaller number.')
