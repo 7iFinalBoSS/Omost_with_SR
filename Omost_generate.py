@@ -247,7 +247,7 @@ def omost_generate(image_save_path, message, num_samples, seed, image_width, ima
 if __name__ == "__main__":
     # default settings
     parser = argparse.ArgumentParser()
-    parser.add_argument('--image_save_path', type=str, default=None, help= "save path for generated images")
+    parser.add_argument('--image_save_path', type=str, default='/path/to/save_path', help= "save path for generated images")
     parser.add_argument('--message', type=str, default="the beautiful city", help= "the input for llm model")
     parser.add_argument('--num_samples', type=int, default=2, help= "one batch image nums")
     parser.add_argument('--seed', type=int, default=12345, help= "seed")
