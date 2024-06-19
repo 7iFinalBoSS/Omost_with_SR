@@ -359,6 +359,6 @@ class OmostAutoPipeline():
 if __name__ == "__main__":
     # a simple test for OmostAutoPipeline
     pipe = OmostAutoPipeline()
-    topic = "the beautiful city"
-    result = pipe.omost_generate(topic)
+    message = "the beautiful city"
+    result = pipe.omost_generate(message)
     result[0].save("result.png")
