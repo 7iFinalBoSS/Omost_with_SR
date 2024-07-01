@@ -7,7 +7,6 @@ import lib_omost.memory_management as memory_management
 import uuid
 import torch
 import numpy as np
-import gradio as gr
 import tempfile
 
 # Phi3 Hijack
@@ -16,7 +15,7 @@ Phi3PreTrainedModel._supports_sdpa = True
 
 from PIL import Image
 from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
-from diffusers import AutoencoderKL, UNet2DConditionModel
+from diffusers import AutoencoderKL, UNet2DConditionModel,StableDiffusionXLPipeline
 from diffusers.models.attention_processor import AttnProcessor2_0
 from transformers import CLIPTextModel, CLIPTokenizer
 from lib_omost.pipeline import StableDiffusionXLOmostPipeline
@@ -24,26 +23,32 @@ from chat_interface import ChatInterface
 from transformers.generation.stopping_criteria import StoppingCriteriaList
 import lib_omost.canvas as omost_canvas
 
+
+
+
+
+
+
+
+
+
 # super resolution module
-from extension.Real_ESRGAN.realesrgan import RealESRGANer
-from basicsr.archs.rrdbnet_arch import RRDBNet
+
 
 class OmostAutoPipeline():
-    def __init__(self, 
-                sdxl_model_name: str = '/path/to/RealVisXL_V4.0',
-                llm_model_name: str = '/path/to/omost-llama-3-8b-4bits',
-                sr_model_path: str = '/path/to/RealESRGAN_x4plus.pth', # depend on sr_model_name
-                num_samples: int = 1, 
-                seed: int = 1337, 
-                image_width: int = 1024, 
-                image_height: int = 1024, 
-                highres_scale: float = 2.0, 
-                steps: int = 30, 
-                cfg: float = 5.0, 
+    def __init__(self,
+                sdxl_model_name: str = 'SG161222/RealVisXL_V4.0',
+                llm_model_name: str = 'lllyasviel/omost-llama-3-8b-4bits',
+                num_samples: int = 1,
+                seed: int = 1337,
+                image_width: int = 512,
+                image_height: int = 512,
+                highres_scale: float = 2.0,
+                steps: int = 30,
+                cfg: float = 5.0,
                 highres_steps: int = 20,
                 highres_denoise: float = 0.4,
                 negative_prompt: str = 'nsfw,lowres,bad anatomy,bad hands,text,error,missing fingers,extra digit,fewer digits,cropped,worst quality,low quality,normal quality,jpeg artifacts,signature,watermark,username,blurry',
-                sr_model_name: str = 'RealESRGAN_x4plus', # RealESRGAN_x4plus_anime_6B
                 tile: int = 0,
                 tile_pad: int = 10,
                 pre_pad: int = 0,
@@ -97,23 +102,7 @@ class OmostAutoPipeline():
 
         ################################################# SR #################################################
         # RealESRGAN module
-        if sr_model_name == 'RealESRGAN_x4plus':  # x4 RRDBNet model
-            sr_model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
-            sr_netscale = 4
-        else:  # RealESRGAN_x4plus_anime_6B  # x4 RRDBNet model with 6 blocks
-            sr_model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=6, num_grow_ch=32, scale=4)
-            sr_netscale = 4
-        
-        self.upsampler = RealESRGANer(
-            scale=sr_netscale,
-            model_path=sr_model_path,
-            dni_weight=None,
-            model=sr_model,
-            tile=tile,
-            tile_pad=tile_pad,
-            pre_pad=pre_pad,
-            half=not fp32,
-            gpu_id=None)
+
 
     def set_num_samples(self, num_samples: int):
         self.num_samples = num_samples
@@ -138,13 +127,13 @@ class OmostAutoPipeline():
 
     def set_highres_steps(self, highres_steps: int):
         self.highres_steps = highres_steps
-    
+
     def set_highres_denoise(self, highres_denoise: float):
         self.highres_denoise = highres_denoise
-    
+
     def set_negative_prompt(self, negative_prompt: str):
         self.negative_prompt = negative_prompt
-    
+
     def PIL_to_cv2(self, numpy_array):
         if numpy_array.ndim == 2:  # grey image
             cv2_array = numpy_array
@@ -165,7 +154,7 @@ class OmostAutoPipeline():
             pil_array = cv2.cvtColor(numpy_array, cv2.COLOR_BGRA2RGBA)
         else:
             raise ValueError("Unsupported image format")
-        return pil_array 
+        return pil_array
 
     def img_sr_api(self, numpy_array):
         img = self.PIL_to_cv2(numpy_array)
@@ -198,7 +187,7 @@ class OmostAutoPipeline():
         pil_image = Image.fromarray(image)
         resized_image = pil_image.resize((target_width, target_height), Image.LANCZOS)
         return np.array(resized_image)
-    
+
     @torch.inference_mode()
     def llm_output(self, message: str, temperature: float=0.6, top_p: float=0.9, max_new_tokens: int=4096, repetition_penalty: float=1.2) -> str:
         np.random.seed(int(self.seed))
@@ -206,7 +195,7 @@ class OmostAutoPipeline():
 
         conversation = [{"role": "system", "content": omost_canvas.system_prompt}]
         conversation.append({"role": "user", "content": message})
-        
+
         memory_management.load_models_to_gpu(self.llm_model)
 
         input_ids = self.llm_tokenizer.apply_chat_template(
@@ -242,7 +231,7 @@ class OmostAutoPipeline():
                 return None
 
         canvas_outputs = process_canvas(response)
-        
+
         if canvas_outputs and canvas_outputs.get("bag_of_conditions") is not None:
             return canvas_outputs
         else:
@@ -296,44 +285,44 @@ class OmostAutoPipeline():
         B, C, H, W = pixels.shape
         pixels = self.pytorch2numpy(pixels)
 
-        if highres_scale > 1.0 + eps:
-            # add super resolution module
-            pixels = [self.img_sr_api(p) for p in pixels]
-            pixels = [
-                self.resize_without_crop(
-                    image=p,
-                    target_width=int(round(W * highres_scale / 64.0) * 64),
-                    target_height=int(round(H * highres_scale / 64.0) * 64)
-                ) for p in pixels
-            ]
+        # if highres_scale > 1.0 + eps:
+        #     # add super resolution module
+        #     pixels = [self.img_sr_api(p) for p in pixels]
+        #     pixels = [
+        #         self.resize_without_crop(
+        #             image=p,
+        #             target_width=int(round(W * highres_scale / 64.0) * 64),
+        #             target_height=int(round(H * highres_scale / 64.0) * 64)
+        #         ) for p in pixels
+        #     ]
 
-            pixels = self.numpy2pytorch(pixels).to(device=self.vae.device, dtype=self.vae.dtype)
-            latents = self.vae.encode(pixels).latent_dist.mode() * self.vae.config.scaling_factor
+        #     pixels = self.numpy2pytorch(pixels).to(device=self.vae.device, dtype=self.vae.dtype)
+        #     latents = self.vae.encode(pixels).latent_dist.mode() * self.vae.config.scaling_factor
 
-            memory_management.load_models_to_gpu([self.unet])
-            latents = latents.to(device=self.unet.device, dtype=self.unet.dtype)
+        #     memory_management.load_models_to_gpu([self.unet])
+        #     latents = latents.to(device=self.unet.device, dtype=self.unet.dtype)
 
-            latents = self.pipeline(
-                initial_latent=latents,
-                strength=highres_denoise,
-                num_inference_steps=highres_steps,
-                batch_size=num_samples,
-                prompt_embeds=positive_cond,
-                negative_prompt_embeds=negative_cond,
-                pooled_prompt_embeds=positive_pooler,
-                negative_pooled_prompt_embeds=negative_pooler,
-                generator=rng,
-                guidance_scale=float(cfg),
-            ).images
+        #     latents = self.pipeline(
+        #         initial_latent=latents,
+        #         strength=highres_denoise,
+        #         num_inference_steps=highres_steps,
+        #         batch_size=num_samples,
+        #         prompt_embeds=positive_cond,
+        #         negative_prompt_embeds=negative_cond,
+        #         pooled_prompt_embeds=positive_pooler,
+        #         negative_pooled_prompt_embeds=negative_pooler,
+        #         generator=rng,
+        #         guidance_scale=float(cfg),
+        #     ).images
 
-            memory_management.load_models_to_gpu([self.vae])
-            latents = latents.to(dtype=self.vae.dtype, device=self.vae.device) / self.vae.config.scaling_factor
-            pixels = self.vae.decode(latents).sample
-            pixels = self.pytorch2numpy(pixels)
-        
+        #     memory_management.load_models_to_gpu([self.vae])
+        #     latents = latents.to(dtype=self.vae.dtype, device=self.vae.device) / self.vae.config.scaling_factor
+        #     pixels = self.vae.decode(latents).sample
+        #     pixels = self.pytorch2numpy(pixels)
+
         # return PIL images list
         return [Image.fromarray(p) for p in pixels]
-    
+
     # call omost to generate images
     # the process is: txt input -> llm -> canvus outputs -> txt2img -> sr -> img2img -> img output
     def omost_generate(self, message: str, num_samples: int=None, seed: int=None, image_width: int=None, image_height: int=None) -> list:
@@ -341,24 +330,18 @@ class OmostAutoPipeline():
         response = self.llm_output(message)
         # Processing the response to generate canvus outputs
         canvas_outputs = self.post_process(response, message)
+        print(canvas_outputs)
         # Image render
-        output = self.diffusion_output(canvas_outputs, 
-                                    num_samples = num_samples if num_samples is not None else self.num_samples, 
-                                    seed = seed if seed is not None else self.seed, 
-                                    image_width = image_width if image_width is not None else self.image_width, 
-                                    image_height = image_height if image_height is not None else self.image_height, 
-                                    highres_scale = self.highres_scale, 
-                                    steps = self.steps, 
-                                    cfg = self.cfg, 
+        output = self.diffusion_output(canvas_outputs,
+                                    num_samples = num_samples if num_samples is not None else self.num_samples,
+                                    seed = seed if seed is not None else self.seed,
+                                    image_width = image_width if image_width is not None else self.image_width,
+                                    image_height = image_height if image_height is not None else self.image_height,
+                                    highres_scale = self.highres_scale,
+                                    steps = 10,
+                                    cfg = self.cfg,
                                     highres_steps = self.highres_steps,
-                                    highres_denoise = self.highres_denoise, 
+                                    highres_denoise = self.highres_denoise,
                                     negative_prompt = self.negative_prompt)
 
         return output
-
-if __name__ == "__main__":
-    # a simple test for OmostAutoPipeline
-    pipe = OmostAutoPipeline()
-    message = "the beautiful city"
-    result = pipe.omost_generate(message)
-    result[0].save("result.png")

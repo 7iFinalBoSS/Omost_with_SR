@@ -4,7 +4,7 @@ from contextlib import contextmanager
 
 high_vram = False
 gpu = torch.device('cuda')
-cpu = torch.device('cpu')
+cpu = torch.device('cuda')
 
 torch.zeros((1, 1)).to(gpu, torch.float32)
 torch.cuda.empty_cache()

@@ -148,7 +148,7 @@ class Canvas:
         self.suffixes = []
         return
 
-    def set_global_description(self, description: str, detailed_descriptions: list[str], tags: str,
+    def set_global_description(self, description: str, detailed_descriptions: str, tags: str,
                                HTML_web_color_name: str):
         assert isinstance(description, str), 'Global description is not valid!'
         assert isinstance(detailed_descriptions, list) and all(isinstance(item, str) for item in detailed_descriptions), \
@@ -170,7 +170,7 @@ class Canvas:
         return
 
     def add_local_description(self, location: str, offset: str, area: str, distance_to_viewer: float, description: str,
-                              detailed_descriptions: list[str], tags: str, atmosphere: str, style: str,
+                              detailed_descriptions: str, tags: str, atmosphere: str, style: str,
                               quality_meta: str, HTML_web_color_name: str):
         assert isinstance(description, str), 'Local description is wrong!'
         assert isinstance(distance_to_viewer, (int, float)) and distance_to_viewer > 0, \
