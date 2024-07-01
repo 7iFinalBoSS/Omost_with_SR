@@ -19,7 +19,6 @@ from diffusers import AutoencoderKL, UNet2DConditionModel,StableDiffusionXLPipel
 from diffusers.models.attention_processor import AttnProcessor2_0
 from transformers import CLIPTextModel, CLIPTokenizer
 from lib_omost.pipeline import StableDiffusionXLOmostPipeline
-from chat_interface import ChatInterface
 from transformers.generation.stopping_criteria import StoppingCriteriaList
 import lib_omost.canvas as omost_canvas
 
